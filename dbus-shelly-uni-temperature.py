@@ -39,24 +39,23 @@ class DbusShellyUniService:
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', customname)
         self._dbusservice.add_path('/Connected', 1)
-
         self._dbusservice.add_path('/FirmwareVersion', self._getShellyFWVersion())
         self._dbusservice.add_path('/HardwareVersion', 0)
         self._dbusservice.add_path('/Serial', self._getShellySerial())
         self._dbusservice.add_path('/UpdateIndex', 0)
 
-        # add path values to dbus
+        # Add the additional paths
         for path, settings in self._paths.items():
             self._dbusservice.add_path(path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
 
-        # last update
+        # Last update
         self._lastUpdate = 0
 
-        # add _update function 'timer'
+        # Add _update function 'timer'
         gobject.timeout_add(250, self._update) # pause 250ms before the next request
 
-        # add _signOfLife 'timer' to get feedback in log every 5minutes
-        gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
+        # Add _signOfLife 'timer' to get feedback in log every 5 minutes
+        gobject.timeout_add(self._getSignOfLifeInterval() * 60 * 1000, self._signOfLife)
 
     def _getShellySerial(self):
         meter_data = self._getShellyData()
@@ -155,7 +154,6 @@ def main():
             paths={
                 '/Temperature': {'initial': None, 'textformat': _c},
                 '/TemperatureType': {'initial': 2, 'textformat': str},
-                '/CustomName': {'initial': 'Shelly Uni Temp Sensor', 'textformat': str},
             })
 
         logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
