@@ -21,12 +21,13 @@ class DbusShellyUniService:
         self._section = section
         deviceinstance = int(config[section]['Deviceinstance'])
         customname = config[section]['CustomName']
-        self._probe_number = config[section]['ProbeNumber']
+        self._probe_number = int(config[section]['ProbeNumber'])
 
+        # Use a unique path for each instance
         self._dbusservice = VeDbusService("{}.http_{:02d}".format('com.victronenergy.temperature', deviceinstance))
         self._paths = paths
 
-        logging.debug("%s /DeviceInstance = %d" % (section, deviceinstance))
+        logging.info("%s /DeviceInstance = %d" % (section, deviceinstance))
 
         # Create the management objects, as specified in the ccgx dbus-api document
         self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
@@ -106,7 +107,7 @@ class DbusShellyUniService:
     def _update(self):
         try:
             meter_data = self._getShellyData()
-            probe_number = self._config[self._section]['ProbeNumber']
+            probe_number = str(self._probe_number)
             temperature = meter_data['ext_temperature'][probe_number]['tC']
             self._dbusservice['/Temperature'] = temperature
             logging.debug("Temperature: %s" % (self._dbusservice['/Temperature']))
@@ -127,7 +128,7 @@ class DbusShellyUniService:
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+    logging.basicConfig(format='%(asctime)s,%(msecs)d %(name)s %(levellevel)d %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',
                         level=logging.INFO,
                         handlers=[
