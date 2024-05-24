@@ -134,6 +134,10 @@ class DbusShellyUniService:
                 logging.error("Response does not contain 'ext_temperature' attribute")
                 return True
 
+            if probe_number not in meter_data['ext_temperature']:
+                logging.error("Response does not contain probe number %s in 'ext_temperature'", probe_number)
+                return True
+
             temperature = meter_data['ext_temperature'][probe_number]['tC']
             self._dbusservice['/Temperature'] = temperature
             logging.debug("Temperature: %s, with probe %s" % (self._dbusservice['/Temperature'], probe_number))
@@ -147,6 +151,7 @@ class DbusShellyUniService:
         except Exception as e:
             logging.critical('Error at %s', '_update', exc_info=e)
         return True
+
 
     def _handlechangedvalue(self, path, value):
         logging.debug("someone else updated %s to %s" % (path, value))
