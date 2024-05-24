@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import platform
 import logging
 import sys
@@ -18,15 +16,17 @@ from vedbus import VeDbusService
 
 
 class DbusShellyUniService:
-    def __init__(self, servicename, paths, productname='Shelly Uni', connection='Shelly Uni HTTP JSON service'):
-        config = self._getConfig()
-        deviceinstance = int(config['DEFAULT']['Deviceinstance'])
-        customname = config['DEFAULT']['CustomName']
+    def __init__(self, config, section, paths, productname='Shelly Uni', connection='Shelly Uni HTTP JSON service'):
+        self._config = config
+        self._section = section
+        deviceinstance = int(config[section]['Deviceinstance'])
+        customname = config[section]['CustomName']
+        self._probe_number = config[section]['ProbeNumber']
 
-        self._dbusservice = VeDbusService("{}.http_{:02d}".format(servicename, deviceinstance))
+        self._dbusservice = VeDbusService("{}.http_{:02d}".format(section, deviceinstance))
         self._paths = paths
 
-        logging.debug("%s /DeviceInstance = %d" % (servicename, deviceinstance))
+        logging.debug("%s /DeviceInstance = %d" % (section, deviceinstance))
 
         # Create the management objects, as specified in the ccgx dbus-api document
         self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
@@ -71,26 +71,19 @@ class DbusShellyUniService:
         ver = meter_data['update']['old_version']
         return ver
 
-    def _getConfig(self):
-        config = configparser.ConfigParser()
-        config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
-        return config
-
     def _getSignOfLifeInterval(self):
-        config = self._getConfig()
-        value = config['DEFAULT']['SignOfLifeLog']
+        value = self._config[self._section]['SignOfLifeLog']
         if not value:
             value = 0
         return int(value)
 
     def _getShellyStatusUrl(self):
-        config = self._getConfig()
-        accessType = config['DEFAULT']['AccessType']
+        accessType = self._config[self._section]['AccessType']
         if accessType == 'OnPremise':
-            URL = "http://%s:%s@%s/status" % (config['ONPREMISE']['Username'], config['ONPREMISE']['Password'], config['ONPREMISE']['Host'])
+            URL = "http://%s:%s@%s/status" % (self._config['ONPREMISE']['Username'], self._config['ONPREMISE']['Password'], self._config[self._section]['Host'])
             URL = URL.replace(":@", "")
         else:
-            raise ValueError("AccessType %s is not supported" % (config['DEFAULT']['AccessType']))
+            raise ValueError("AccessType %s is not supported" % (self._config[self._section]['AccessType']))
         return URL
 
     def _getShellyData(self):
@@ -113,7 +106,7 @@ class DbusShellyUniService:
     def _update(self):
         try:
             meter_data = self._getShellyData()
-            temperature = meter_data['ext_temperature']['1']['tC']
+            temperature = meter_data['ext_temperature'][self._probe_number]['tC']
             self._dbusservice['/Temperature'] = temperature
             logging.debug("Temperature: %s" % (self._dbusservice['/Temperature']))
 
@@ -147,14 +140,23 @@ def main():
         from dbus.mainloop.glib import DBusGMainLoop
         DBusGMainLoop(set_as_default=True)
 
+        config = configparser.ConfigParser()
+        config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+
         _c = lambda p, v: (str(round(v, 2)) + '°C')
 
-        temp_service = DbusShellyUniService(
-            servicename='com.victronenergy.temperature',
-            paths={
-                '/Temperature': {'initial': None, 'textformat': _c},
-                '/TemperatureType': {'initial': 2, 'textformat': str},
-            })
+        # Initialize services for each device
+        services = []
+        for section in config.sections():
+            if section.startswith('DEVICE'):
+                service = DbusShellyUniService(
+                    config=config,
+                    section=section,
+                    paths={
+                        '/Temperature': {'initial': None, 'textformat': _c},
+                        '/TemperatureType': {'initial': 2, 'textformat': str},
+                    })
+                services.append(service)
 
         logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
         mainloop = gobject.MainLoop()
