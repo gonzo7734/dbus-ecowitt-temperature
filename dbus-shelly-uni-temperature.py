@@ -28,30 +28,35 @@ class DbusShellyUniService:
 
         logging.debug("%s /DeviceInstance = %d" % (servicename, deviceinstance))
 
+        # Create the management objects, as specified in the ccgx dbus-api document
         self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
         self._dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
         self._dbusservice.add_path('/Mgmt/Connection', connection)
 
+        # Create the mandatory objects
         self._dbusservice.add_path('/DeviceInstance', deviceinstance)
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', customname)
         self._dbusservice.add_path('/Connected', 1)
 
-        self._dbusservice.add_path('/Latency', None)
         self._dbusservice.add_path('/FirmwareVersion', self._getShellyFWVersion())
         self._dbusservice.add_path('/HardwareVersion', 0)
-        self._dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
         self._dbusservice.add_path('/Serial', self._getShellySerial())
         self._dbusservice.add_path('/UpdateIndex', 0)
-        self._dbusservice.add_path('/StatusCode', 0)
 
+        # add path values to dbus
         for path, settings in self._paths.items():
             self._dbusservice.add_path(path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
 
+        # last update
         self._lastUpdate = 0
-        gobject.timeout_add(250, self._update)
-        gobject.timeout_add(self._getSignOfLifeInterval() * 60 * 1000, self._signOfLife)
+
+        # add _update function 'timer'
+        gobject.timeout_add(250, self._update) # pause 250ms before the next request
+
+        # add _signOfLife 'timer' to get feedback in log every 5minutes
+        gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
 
     def _getShellySerial(self):
         meter_data = self._getShellyData()
