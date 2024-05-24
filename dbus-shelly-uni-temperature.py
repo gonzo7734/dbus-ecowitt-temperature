@@ -15,6 +15,45 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/d
 from vedbus import VeDbusService
 
 
+class SystemBus(dbus.bus.BusConnection):
+    def __new__(cls):
+        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SYSTEM)
+
+
+class SessionBus(dbus.bus.BusConnection):
+    def __new__(cls):
+        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
+
+
+def dbusconnection():
+    return SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
+
+
+def new_service(base, type, physical, logical, id, instance):
+    if instance == 0:
+        self = VeDbusService("{}.{}".format(base, type), dbusconnection())
+    else:
+        self = VeDbusService("{}.{}.{}_id{:02d}".format(base, type, physical, id), dbusconnection())
+    self.add_path('/Mgmt/ProcessName', __file__)
+    self.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
+    self.add_path('/Mgmt/Connection', logical)
+    self.add_path('/DeviceInstance', instance)
+    self.add_path('/ProductId', 0)
+    self.add_path('/ProductName', '')
+    self.add_path('/FirmwareVersion', '')
+    self.add_path('/HardwareVersion', '')
+    self.add_path('/Connected', 0)
+    self.add_path('/Serial', '0')
+
+    return self
+
+
+def getConfig():
+    config = configparser.ConfigParser()
+    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+    return config
+
+
 class DbusShellyUniService:
     def __init__(self, config, section, paths, productname='Shelly Uni', connection='Shelly Uni HTTP JSON service'):
         self._config = config
@@ -23,16 +62,12 @@ class DbusShellyUniService:
         customname = config[section]['CustomName']
         self._probe_number = int(config[section]['ProbeNumber'])
 
-        # Use a unique path for each instance
-        self._dbusservice = VeDbusService("{}.http_{:02d}".format('com.victronenergy.temperature', deviceinstance))
+        # Use a unique service name and object path for each instance
+        service_name = "com.victronenergy.temperature.http_{:02d}".format(deviceinstance)
+        self._dbusservice = new_service('com.victronenergy', 'temperature', 'http', 'http', deviceinstance, deviceinstance)
         self._paths = paths
 
         logging.info("%s /DeviceInstance = %d" % (section, deviceinstance))
-
-        # Create the management objects, as specified in the ccgx dbus-api document
-        self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
-        self._dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
-        self._dbusservice.add_path('/Mgmt/Connection', connection)
 
         # Create the mandatory objects
         self._dbusservice.add_path('/DeviceInstance', deviceinstance)
@@ -53,7 +88,7 @@ class DbusShellyUniService:
         self._lastUpdate = 0
 
         # Add _update function 'timer'
-        gobject.timeout_add(250, self._update) # pause 250ms before the next request
+        gobject.timeout_add(250, self._update)  # pause 250ms before the next request
 
         # Add _signOfLife 'timer' to get feedback in log every 5 minutes
         gobject.timeout_add(self._getSignOfLifeInterval() * 60 * 1000, self._signOfLife)
@@ -128,7 +163,7 @@ class DbusShellyUniService:
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s,%(msecs)d %(name)s %(levellevel)d %(message)s',
+    logging.basicConfig(format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',
                         level=logging.INFO,
                         handlers=[
@@ -142,8 +177,7 @@ def main():
         from dbus.mainloop.glib import DBusGMainLoop
         DBusGMainLoop(set_as_default=True)
 
-        config = configparser.ConfigParser()
-        config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+        config = getConfig()
 
         _c = lambda p, v: (str(round(v, 2)) + '°C')
 
