@@ -5,6 +5,7 @@ import os
 import time
 import requests
 import configparser
+import dbus
 
 if sys.version_info.major == 2:
     import gobject
