@@ -74,10 +74,10 @@ class DbusShellyUniService:
         self._lastUpdate = 0
 
         # Add _update function 'timer'
-        gobject.timeout_add(5000, self._update)  # pause 5000ms before the next request // no need for anything faster
+        gobject.timeout_add(60 * 1000, self._update)  # pause 1 minute before the next request // no need for anything faster
 
-        # Add _signOfLife 'timer' to get feedback in log every 5 minutes
-        gobject.timeout_add(self._getSignOfLifeInterval() * 60 * 1000, self._signOfLife)
+        # Add _signOfLife 'timer' to get feedback in log every 15minutes
+        gobject.timeout_add(self._getSignOfLifeInterval() * 15 * 60 * 1000, self._signOfLife)
 
     def _getShellySerial(self):
         meter_data = self._getShellyData()
