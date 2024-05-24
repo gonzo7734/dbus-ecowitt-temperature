@@ -23,7 +23,7 @@ class DbusShellyUniService:
         customname = config[section]['CustomName']
         self._probe_number = config[section]['ProbeNumber']
 
-        self._dbusservice = VeDbusService("{}.http_{:02d}".format(section, deviceinstance))
+        self._dbusservice = VeDbusService("{}.http_{:02d}".format('com.victronenergy.temperature', deviceinstance))
         self._paths = paths
 
         logging.debug("%s /DeviceInstance = %d" % (section, deviceinstance))
@@ -106,7 +106,8 @@ class DbusShellyUniService:
     def _update(self):
         try:
             meter_data = self._getShellyData()
-            temperature = meter_data['ext_temperature'][self._probe_number]['tC']
+            probe_number = self._config[self._section]['ProbeNumber']
+            temperature = meter_data['ext_temperature'][probe_number]['tC']
             self._dbusservice['/Temperature'] = temperature
             logging.debug("Temperature: %s" % (self._dbusservice['/Temperature']))
 
