@@ -14,7 +14,6 @@ else:
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python'))
 from vedbus import VeDbusService
 
-
 class SystemBus(dbus.bus.BusConnection):
     def __new__(cls):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SYSTEM)
@@ -27,25 +26,6 @@ class SessionBus(dbus.bus.BusConnection):
 
 def dbusconnection():
     return SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
-
-
-def new_service(base, type, physical, logical, id, instance):
-    if instance == 0:
-        self = VeDbusService("{}.{}".format(base, type), dbusconnection())
-    else:
-        self = VeDbusService("{}.{}.{}_id{:02d}".format(base, type, physical, id), dbusconnection())
-    self.add_path('/Mgmt/ProcessName', __file__)
-    self.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
-    self.add_path('/Mgmt/Connection', logical)
-    self.add_path('/DeviceInstance', instance)
-    self.add_path('/ProductId', 0)
-    self.add_path('/ProductName', '')
-    self.add_path('/FirmwareVersion', '')
-    self.add_path('/HardwareVersion', '')
-    self.add_path('/Connected', 0)
-    self.add_path('/Serial', '0')
-
-    return self
 
 
 def getConfig():
@@ -64,10 +44,15 @@ class DbusShellyUniService:
 
         # Use a unique service name and object path for each instance
         service_name = "com.victronenergy.temperature.http_{:02d}".format(deviceinstance)
-        self._dbusservice = new_service('com.victronenergy', 'temperature', 'http', 'http', deviceinstance, deviceinstance)
+        self._dbusservice = VeDbusService(service_name, dbusconnection())
         self._paths = paths
 
         logging.info("%s /DeviceInstance = %d" % (section, deviceinstance))
+
+        # Create the management objects, as specified in the ccgx dbus-api document
+        self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
+        self._dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
+        self._dbusservice.add_path('/Mgmt/Connection', connection)
 
         # Create the mandatory objects
         self._dbusservice.add_path('/DeviceInstance', deviceinstance)
