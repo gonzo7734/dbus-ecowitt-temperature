@@ -129,6 +129,7 @@ class DbusShellyUniService:
         try:
             meter_data = self._getShellyData()
             probe_number = str(self._probe_number)
+            logging.info("Probe number: %s" % (probe_number))
             
             if 'ext_temperature' not in meter_data:
                 logging.error("Response does not contain 'ext_temperature' attribute")
