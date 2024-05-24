@@ -73,7 +73,7 @@ class DbusShellyUniService:
         self._lastUpdate = 0
 
         # Add _update function 'timer'
-        gobject.timeout_add(250, self._update)  # pause 250ms before the next request
+        gobject.timeout_add(5000, self._update)  # pause 5000ms before the next request // no need for anything faster
 
         # Add _signOfLife 'timer' to get feedback in log every 5 minutes
         gobject.timeout_add(self._getSignOfLifeInterval() * 60 * 1000, self._signOfLife)
@@ -128,9 +128,14 @@ class DbusShellyUniService:
         try:
             meter_data = self._getShellyData()
             probe_number = str(self._probe_number)
+            
+            if 'ext_temperature' not in meter_data:
+                logging.error("Response does not contain 'ext_temperature' attribute")
+                return True
+
             temperature = meter_data['ext_temperature'][probe_number]['tC']
             self._dbusservice['/Temperature'] = temperature
-            logging.debug("Temperature: %s" % (self._dbusservice['/Temperature']))
+            logging.debug("Temperature: %s, with probe %s" % (self._dbusservice['/Temperature'], probe_number))
 
             index = self._dbusservice['/UpdateIndex'] + 1
             if index > 255:
