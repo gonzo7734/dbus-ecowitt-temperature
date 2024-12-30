@@ -1,10 +1,10 @@
+#edited by chatgpt.com
 import platform
 import logging
 import sys
 import os
 import time
 import requests
-import configparser
 import dbus
 
 if sys.version_info.major == 2:
@@ -19,36 +19,24 @@ class SystemBus(dbus.bus.BusConnection):
     def __new__(cls):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SYSTEM)
 
-
 class SessionBus(dbus.bus.BusConnection):
     def __new__(cls):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
 
-
 def dbusconnection():
     return SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
 
-
-def getConfig():
-    config = configparser.ConfigParser()
-    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
-    return config
-
-
-class DbusEcowittService:
-    def __init__(self, config, section, paths, productname='Ecowitt.net', connection='Ecowitt API HTTP JSON service'):
-        self._config = config
-        self._section = section
-        deviceinstance = int(config[section]['Deviceinstance'])
-        customname = config[section]['CustomName']
-        self._probe_number = int(config[section]['ProbeNumber'])
+class DbusEcowittAPIService:
+    def __init__(self, api_url, mac, paths, productname='Ecowitt API', connection='Ecowitt API HTTP JSON service'):
+        self._api_url = api_url
+        self._mac = mac
 
         # Use a unique service name and object path for each instance
-        service_name = "com.victronenergy.temperature.http_{:02d}".format(deviceinstance)
+        service_name = "com.victronenergy.temperature.http_01"
         self._dbusservice = VeDbusService(service_name, dbusconnection())
         self._paths = paths
 
-        logging.info("%s /DeviceInstance = %d" % (section, deviceinstance))
+        logging.info("Service /DeviceInstance = 0")
 
         # Create the management objects, as specified in the ccgx dbus-api document
         self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
@@ -56,14 +44,14 @@ class DbusEcowittService:
         self._dbusservice.add_path('/Mgmt/Connection', connection)
 
         # Create the mandatory objects
-        self._dbusservice.add_path('/DeviceInstance', deviceinstance)
+        self._dbusservice.add_path('/DeviceInstance', 0)
         self._dbusservice.add_path('/ProductId', 0xFFFF)
         self._dbusservice.add_path('/ProductName', productname)
-        self._dbusservice.add_path('/CustomName', customname)
+        self._dbusservice.add_path('/CustomName', 'API Device')
         self._dbusservice.add_path('/Connected', 1)
-        self._dbusservice.add_path('/FirmwareVersion', 0.1)
+        self._dbusservice.add_path('/FirmwareVersion', 'N/A')
         self._dbusservice.add_path('/HardwareVersion', 0)
-        self._dbusservice.add_path('/Serial', str(config[section]['MAC']))
+        self._dbusservice.add_path('/Serial', self._mac)
         self._dbusservice.add_path('/UpdateIndex', 0)
 
         # Add the additional paths
@@ -74,35 +62,19 @@ class DbusEcowittService:
         self._lastUpdate = 0
 
         # Add _update function 'timer'
-        gobject.timeout_add(60 * 1000, self._update)  # pause 1 minute before the next request // no need for anything faster
+        gobject.timeout_add(60 * 1000, self._update)  # pause 1 minute before the next request
 
-        # Add _signOfLife 'timer' to get feedback in log every 15minutes
-        gobject.timeout_add(self._getSignOfLifeInterval() * 15 * 60 * 1000, self._signOfLife)
+        # Add _signOfLife 'timer' to get feedback in log every 15 minutes
+        gobject.timeout_add(15 * 60 * 1000, self._signOfLife)
 
-
-    def _getSignOfLifeInterval(self):
-        value = self._config[self._section]['SignOfLifeLog']
-        if not value:
-            value = 0
-        return int(value)
-
-    def _getEcowittStatusUrl(self):
-        accessType = self._config[self._section]['AccessType']
-        if accessType == 'ECOWITTAPI':
-            URL = "https://api.ecowitt.net/api/v3/device/real_time?application_key=%s&api_key=%s&mac=%s&call_back=all&temp_unitid=1&wind_speed_unitid=6&rainfall_unitid=12" % (self._config['ECOWITTAPI']['application_key'], self._config['ECOWITTAPI']['api_key'], self._config['DEVICE1']['MAC'])
-        else:
-            raise ValueError("AccessType %s is not supported" % (self._config[self._section]['AccessType']))
-        return URL
-
-    def _getEcowittData(self):
-        URL = self._getEcowittStatusUrl()
-        uni_r = requests.get(url=URL)
-        if not uni_r:
-            raise ConnectionError("No response from Shelly Uni - %s" % (URL))
-        uni_data = uni_r.json()
-        if not uni_data:
-            raise ValueError("Converting response to JSON failed")
-        return uni_data
+    def _getAPIData(self):
+        response = requests.get(url=self._api_url)
+        if response.status_code != 200:
+            raise ConnectionError(f"Failed to fetch data from API: {response.status_code}")
+        data = response.json()
+        if not data:
+            raise ValueError("Converting API response to JSON failed")
+        return data
 
     def _signOfLife(self):
         logging.info("--- Start: sign of life ---")
@@ -113,21 +85,15 @@ class DbusEcowittService:
 
     def _update(self):
         try:
-            meter_data = self._getEcowittData()
-            probe_number = str(self._probe_number)
-            logging.info("Probe number: %s" % (probe_number))
-            
-            if 'ext_temperature' not in meter_data:
-                logging.error("Response does not contain 'ext_temperature' attribute")
+            api_data = self._getAPIData()
+
+            if 'data' not in api_data or 'temperature' not in api_data['data']:
+                logging.error("API response does not contain 'data.temperature' attribute")
                 return True
 
-            if probe_number not in meter_data['ext_temperature']:
-                logging.error("Response does not contain probe number %s in 'ext_temperature'", probe_number)
-                return True
-
-            temperature = meter_data['ext_temperature'][probe_number]['tC']
+            temperature = api_data['data']['temperature']
             self._dbusservice['/Temperature'] = temperature
-            logging.debug("Temperature: %s, with probe %s" % (self._dbusservice['/Temperature'], probe_number))
+            logging.debug("Temperature: %s" % self._dbusservice['/Temperature'])
 
             index = self._dbusservice['/UpdateIndex'] + 1
             if index > 255:
@@ -139,11 +105,9 @@ class DbusEcowittService:
             logging.critical('Error at %s', '_update', exc_info=e)
         return True
 
-
     def _handlechangedvalue(self, path, value):
-        logging.debug("someone else updated %s to %s" % (path, value))
+        logging.debug("Someone else updated %s to %s" % (path, value))
         return True
-
 
 def main():
     logging.basicConfig(format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
@@ -160,29 +124,28 @@ def main():
         from dbus.mainloop.glib import DBusGMainLoop
         DBusGMainLoop(set_as_default=True)
 
-        config = getConfig()
+        # Define your API details
+        APPLICATION_KEY = "YOUR_APPLICATION_KEY"
+        API_KEY = "YOUR_API_KEY"
+        MAC = "YOUR_MAC_CODE_OF_DEVICE"
+        API_URL = f"https://api.ecowitt.net/api/v3/device/real_time?application_key={APPLICATION_KEY}&api_key={API_KEY}&mac={MAC}&call_back=all"
 
         _c = lambda p, v: (str(round(v, 2)) + '°C')
 
-        # Initialize services for each device
-        services = []
-        for section in config.sections():
-            if section.startswith('DEVICE'):
-                service = DbusShellyUniService(
-                    config=config,
-                    section=section,
-                    paths={
-                        '/Temperature': {'initial': None, 'textformat': _c},
-                        '/TemperatureType': {'initial': 2, 'textformat': str},
-                    })
-                services.append(service)
+        # Initialize service
+        service = DbusEcowittAPIService(
+            api_url=API_URL,
+            mac=MAC,
+            paths={
+                '/Temperature': {'initial': None, 'textformat': _c},
+                '/TemperatureType': {'initial': 2, 'textformat': str},
+            })
 
         logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
         mainloop = gobject.MainLoop()
         mainloop.run()
     except Exception as e:
         logging.critical('Error at %s', 'main', exc_info=e)
-
 
 if __name__ == "__main__":
     main()
