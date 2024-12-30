@@ -35,8 +35,8 @@ def getConfig():
     return config
 
 
-class DbusShellyUniService:
-    def __init__(self, config, section, paths, productname='Shelly Uni', connection='Shelly Uni HTTP JSON service'):
+class DbusEcowittService:
+    def __init__(self, config, section, paths, productname='Ecowitt.net', connection='Ecowitt API HTTP JSON service'):
         self._config = config
         self._section = section
         deviceinstance = int(config[section]['Deviceinstance'])
@@ -61,9 +61,9 @@ class DbusShellyUniService:
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/CustomName', customname)
         self._dbusservice.add_path('/Connected', 1)
-        self._dbusservice.add_path('/FirmwareVersion', self._getShellyFWVersion())
+        self._dbusservice.add_path('/FirmwareVersion', 0.1)
         self._dbusservice.add_path('/HardwareVersion', 0)
-        self._dbusservice.add_path('/Serial', self._getShellySerial())
+        self._dbusservice.add_path('/Serial', str(config[section]['MAC']))
         self._dbusservice.add_path('/UpdateIndex', 0)
 
         # Add the additional paths
@@ -79,19 +79,6 @@ class DbusShellyUniService:
         # Add _signOfLife 'timer' to get feedback in log every 15minutes
         gobject.timeout_add(self._getSignOfLifeInterval() * 15 * 60 * 1000, self._signOfLife)
 
-    def _getShellySerial(self):
-        meter_data = self._getShellyData()
-        if not meter_data['mac']:
-            raise ValueError("Response does not contain 'mac' attribute")
-        serial = meter_data['mac']
-        return serial
-
-    def _getShellyFWVersion(self):
-        meter_data = self._getShellyData()
-        if not meter_data['update']['old_version']:
-            raise ValueError("Response does not contain 'update/old_version' attribute")
-        ver = meter_data['update']['old_version']
-        return ver
 
     def _getSignOfLifeInterval(self):
         value = self._config[self._section]['SignOfLifeLog']
@@ -99,17 +86,16 @@ class DbusShellyUniService:
             value = 0
         return int(value)
 
-    def _getShellyStatusUrl(self):
+    def _getEcowittStatusUrl(self):
         accessType = self._config[self._section]['AccessType']
-        if accessType == 'OnPremise':
-            URL = "http://%s:%s@%s/status" % (self._config['ONPREMISE']['Username'], self._config['ONPREMISE']['Password'], self._config[self._section]['Host'])
-            URL = URL.replace(":@", "")
+        if accessType == 'ECOWITTAPI':
+            URL = "https://api.ecowitt.net/api/v3/device/real_time?application_key=%s&api_key=%s&mac=%s&call_back=all&temp_unitid=1&wind_speed_unitid=6&rainfall_unitid=12" % (self._config['ECOWITTAPI']['application_key'], self._config['ECOWITTAPI']['api_key'], self._config['DEVICE1']['MAC'])
         else:
             raise ValueError("AccessType %s is not supported" % (self._config[self._section]['AccessType']))
         return URL
 
-    def _getShellyData(self):
-        URL = self._getShellyStatusUrl()
+    def _getEcowittData(self):
+        URL = self._getEcowittStatusUrl()
         uni_r = requests.get(url=URL)
         if not uni_r:
             raise ConnectionError("No response from Shelly Uni - %s" % (URL))
@@ -127,7 +113,7 @@ class DbusShellyUniService:
 
     def _update(self):
         try:
-            meter_data = self._getShellyData()
+            meter_data = self._getEcowittData()
             probe_number = str(self._probe_number)
             logging.info("Probe number: %s" % (probe_number))
             
